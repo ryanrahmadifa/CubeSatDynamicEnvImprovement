@@ -78,9 +78,9 @@ def simulate_all_configs_partial():
 
         # Compute scores
         try:
-            score_4, _ = compute_score(pos[:idx_4orb], results_4, config, sun_flag[:idx_4orb], gs_flag[:idx_4orb], poi_flag[:idx_4orb], mission)
-            score_8, _ = compute_score(pos[:idx_8orb], results_8, config, sun_flag[:idx_8orb], gs_flag[:idx_8orb], poi_flag[:idx_8orb], mission)
-            score_15, _ = compute_score(pos, results_15, config, sun_flag, gs_flag, poi_flag, mission)
+            score_4, subscores_4 = compute_score(pos[:idx_4orb], results_4, config, sun_flag[:idx_4orb], gs_flag[:idx_4orb], poi_flag[:idx_4orb], mission)
+            score_8, subscores_8 = compute_score(pos[:idx_8orb], results_8, config, sun_flag[:idx_8orb], gs_flag[:idx_8orb], poi_flag[:idx_8orb], mission)
+            score_15, subscores_15 = compute_score(pos, results_15, config, sun_flag, gs_flag, poi_flag, mission)
         except Exception as e:
             print(f"Scoring failed for config {idx}: {e}")
             continue
@@ -90,12 +90,21 @@ def simulate_all_configs_partial():
         output_row['score_4orbits'] = score_4
         output_row['score_8orbits'] = score_8
         output_row['score_15orbits'] = score_15
+        
+        # Add subscores, will be used for targeting the next orbit score
+        for key, value in subscores_4.items():
+            output_row[f'subscore_4_{key}'] = value
+        for key, value in subscores_8.items():
+            output_row[f'subscore_8_{key}'] = value
+        for key, value in subscores_15.items():
+            output_row[f'subscore_15_{key}'] = value
+        
         all_results.append(output_row)
 
     # Save final dataset
     final_df = pd.DataFrame(all_results)
-    final_df.to_csv("outputs/satellite_config_scores_multi.csv", index=False)
-    print("✅ Simulation complete. Results saved to outputs/satellite_config_scores_multi.csv")
+    final_df.to_csv("outputs/satellite_config_scores_multi_original.csv", index=False)
+    print("✅ Simulation complete. Results saved to outputs/satellite_config_scores_multi_original.csv")
 
 
 if __name__ == "__main__":

@@ -11,13 +11,17 @@ from scipy.stats import spearmanr, kendalltau
 # ==== PARSE ARGS ====
 parser = argparse.ArgumentParser(description='Predict satellite scores with different models.')
 parser.add_argument('--model', type=str, choices=['tree', 'forest', 'linear'], required=True)
-parser.add_argument('--dataset', type=str, choices=['low', 'mid', 'high'], required=True)
+parser.add_argument('--dataset', type=str, choices=['low', 'mid1', 'mid2', 'mid3', 'mid4', 'mid5', 'high'], required=True)
 parser.add_argument('--target', type=str, choices=['score_4orbits', 'score_8orbits', 'score_15orbits'], required=True)
+parser.add_argument('--features', type=str, choices=['config_only', 'with_scores', 'with_subscores', 'with_all'], required=True)
+parser.add_argument('--active_learning', type=str, default='none', choices=['none', 'al_8orbits', 'al_15orbits'])
+
 args = parser.parse_args()
 
 MODEL_TYPE = args.model
 DATASET_SIZE = args.dataset
 TARGET_SCORE = args.target
+FEATURES = args.features
 
 # ==== SETTINGS ====
 CV_SPLITS = 5
@@ -26,17 +30,69 @@ TEST_SIZE = 0.2
 # ===================
 
 # ==== LOAD DATA ====
-df = pd.read_csv('./outputs/satellite_config_scores_multi.csv')
+# df = pd.read_csv('./outputs/satellite_config_scores_multi_original.csv')
+if args.active_learning == 'none':
+    df = pd.read_csv('./outputs/satellite_config_scores_multi_original.csv')
+elif args.active_learning == 'al_8orbits':
+    df = pd.read_csv('./outputs/satellite_config_scores_al_8orbits.csv')
+elif args.active_learning == 'al_15orbits':
+    df = pd.read_csv('./outputs/satellite_config_scores_al_15orbits.csv')
 df.columns = df.columns.str.strip().str.lower()
 
-X = df.drop(columns=['score_4orbits', 'score_8orbits', 'score_15orbits'])
+score_columns = ['score_4orbits', 'score_8orbits', 'score_15orbits']
+subscore_4_columns = [col for col in df.columns if col.startswith('subscore_4_')]
+subscore_8_columns = [col for col in df.columns if col.startswith('subscore_8_')]
+subscore_15_columns = [col for col in df.columns if col.startswith('subscore_15_')]
+
+
+if TARGET_SCORE == 'score_4orbits': # No subscores/scores for 4 orbits
+    X = df.drop(columns=['score_4orbits', 'score_8orbits', 'score_15orbits'])     
+    X = X.drop(columns=subscore_15_columns)       
+    X = X.drop(columns=subscore_4_columns)
+    X = X.drop(columns=subscore_8_columns)
+
+elif TARGET_SCORE == 'score_8orbits':
+    X = df.drop(columns=['score_8orbits', 'score_15orbits'])  
+    X = X.drop(columns=subscore_15_columns)
+    X = X.drop(columns=subscore_8_columns) # Drop subscores of 8 orbits
+    if FEATURES == 'config_only': # Subscore and score for 4 orbits are used as features
+        X = X.drop(columns=['score_4orbits'])            
+        X = X.drop(columns=subscore_4_columns)
+    elif FEATURES == 'with_scores':
+        X = X.drop(columns=subscore_4_columns)
+    elif FEATURES == 'with_subscores':
+        X = X.drop(columns=['score_4orbits'])   
+    elif FEATURES == 'with_all':
+        pass
+
+elif TARGET_SCORE == 'score_15orbits':
+    X = df.drop(columns=['score_15orbits'])
+    X = X.drop(columns=subscore_15_columns)
+    if FEATURES == 'config_only':
+        X = X.drop(columns=['score_4orbits', 'score_8orbits'])            
+        X = X.drop(columns=subscore_4_columns)
+        X = X.drop(columns=subscore_8_columns)
+    elif FEATURES == 'with_scores':
+        X = X.drop(columns=subscore_4_columns)
+        X = X.drop(columns=subscore_8_columns)
+    elif FEATURES == 'with_subscores':
+        X = X.drop(columns=['score_4orbits', 'score_8orbits'])  
+    elif FEATURES == 'with_all':
+        pass
+
+
 X = X.select_dtypes(include=[np.number])
 y = df[TARGET_SCORE]
 
 sample_sizes = {
-    'low': 35,
-    'mid': 350,
-    'high': 3500
+    'low':    35,
+    'mid1':  100,
+    'mid2':  250,
+    'mid3':  350,
+    'mid4':  500,
+    'mid5': 1000,
+    'mid6': 2000,
+    'high': 3500,
 }
 
 # ==== METRICS STORAGE ====
@@ -51,9 +107,16 @@ rhos_15 = []
 for seed in range(N_SEEDS):
     np.random.seed(seed)
 
-    # Fix sample size if needed
     N = min(sample_sizes[DATASET_SIZE], len(X))
-    X_sampled = X.sample(n=N, random_state=seed)
+
+    # Slice by al_order so each size uses exactly the first N rows the AL loop produced.
+    # This gives an honest learning curve: row 0..34 are random seed, rest are AL-selected.
+    if 'al_order' in df.columns:
+        candidate_idx = df.index[df['al_order'] < N]
+        candidate_idx = candidate_idx[candidate_idx.isin(X.index)]
+        X_sampled = X.loc[candidate_idx]
+    else:
+        X_sampled = X.sample(n=N, random_state=seed)
     y_sampled = y.loc[X_sampled.index]
 
     X_train, X_test, y_train, y_test = train_test_split(

@@ -32,9 +32,9 @@ for n_samples in sample_sizes:
     X_sampled = df_sampled.drop(columns=['score']).select_dtypes(include=['number'])
     y_sampled = df_sampled['score']
 
-    # Train/test split (90/10)
+    # Train/test split (80/20)
     X_train, X_test, y_train, y_test = train_test_split(
-        X_sampled, y_sampled, test_size=0.1, random_state=42
+        X_sampled, y_sampled, test_size=0.2, random_state=42
     )
 
     # Train a simple DecisionTreeRegressor
